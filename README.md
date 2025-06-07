@@ -21,23 +21,66 @@ A graphical application for exploring Open Virtual Networks (OVN) in OpenShift e
 - OpenShift cluster with OVN networking
 - Access to the OpenShift cluster via `oc` command-line tool
 - Kubernetes configuration (`~/.kube/config`) with appropriate permissions
+- pyenv (for Python version management)
 
 ## Installation
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/ovn_explorer.git
+   git clone https://github.com/dlbewley/ovn_explorer.git
    cd ovn_explorer
    ```
 
-2. Create a virtual environment (optional but recommended):
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+2. Install pyenv (if not already installed):
+   ```bash
+   # macOS
+   brew install pyenv
+
+   # Linux
+   curl https://pyenv.run | bash
    ```
 
-3. Install dependencies:
+3. Add pyenv to your shell configuration:
+   ```bash
+   # Add to ~/.bashrc, ~/.zshrc, or ~/.bash_profile
+   export PYENV_ROOT="$HOME/.pyenv"
+   [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+   eval "$(pyenv init -)"
    ```
+
+4. Install os prerequisites:
+   ```bash
+   brew install tcl-tk@8
+   brew install qt@6
+   ```
+
+5. Install and set up Python:
+   ```bash
+   # Install Python 3.8 or newer
+   PYTHON_VERSION=3.12.3
+   APP_NAME=ovn-explorer
+   export LDFLAGS="-L/opt/homebrew/opt/tcl-tk@8/lib"
+   export CPPFLAGS="-I/opt/homebrew/opt/tcl-tk@8/include"
+   export PKG_CONFIG_PATH="/opt/homebrew/opt/tcl-tk@8/lib/pkgconfig"
+   env \
+      LDFLAGS="$LDFLAGS" \
+      CPPFLAGS="$CPPFLAGS" \
+      PKG_CONFIG_PATH="$PKG_CONFIG_PATH" \
+      pyenv install PYTHON_VERSION
+   
+   ```
+
+6. Create and activate a virtual environment:
+   ```bash
+   # Create a new virtual environment
+   pyenv virtualenv "$PYTHON_VERSION" "$APP_NAME"
+   
+   # Set local Python virtualenv for this project (.python-version)
+   pyenv local $APP_NAME
+   ```
+
+7. Install dependencies:
+   ```bash
    pip install -r requirements.txt
    ```
 
