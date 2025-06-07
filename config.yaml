@@ -1,0 +1,24 @@
+# OVN Explorer Configuration
+
+# OVN Connection Settings
+ovn_connection:
+  namespace: openshift-ovn-kubernetes
+  label_selector: app=ovnkube-node
+  container: nbdb
+  # kubeconfig: ~/.kube/config  # Uncomment to specify a custom kubeconfig path
+  # node_name: worker-1  # Uncomment to specify a specific node
+
+# GUI Settings
+gui:
+  theme: light  # light or dark
+  window_size: [1024, 768]
+
+# Visualization Settings
+visualization:
+  node_size: 800
+  edge_width: 2
+  font_size: 10
+
+# Logging Settings
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
