@@ -4,6 +4,7 @@ PyQt6>=6.5.0
 # Network Visualization
 matplotlib>=3.7.0
 networkx>=3.0
+scipy>=1.10.0  # Required for networkx layout algorithms
 
 # Network Communication
 paramiko>=3.0.0
