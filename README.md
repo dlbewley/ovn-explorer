@@ -2,6 +2,8 @@
 
 A graphical application for exploring Open Virtual Networks (OVN) in OpenShift environments. This application connects to a northbound database pod and visualizes OVN components such as Logical Routers, Logical Switches, Load Balancers, and Ports.
 
+![OVN Explorer UI](./docs/img/ovn-explorer-ui.png)
+
 ## Features
 
 - Connect to OVN northbound database pods in OpenShift clusters
