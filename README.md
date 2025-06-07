@@ -29,7 +29,7 @@ A graphical application for exploring Open Virtual Networks (OVN) in OpenShift e
 
 1. Clone the repository:
    ```
-   git clone https://github.com/dlbewley/ovn_explorer.git
+   git clone https://github.com/dlbewley/ovn-explorer.git
    cd ovn_explorer
    ```
 
