@@ -16,6 +16,9 @@ A graphical application for exploring Open Virtual Networks (OVN) in OpenShift e
 - Interactive network visualization with multiple layout algorithms
 - Detailed component information display
 - Console for executing OVN commands
+- JSON data collection and caching for improved performance
+- Persistent cache of OVN data for offline viewing
+- Refresh all data on demand with a single click
 
 ## Requirements
 
@@ -105,6 +108,8 @@ ovn_connection:
   container: nbdb
   # kubeconfig: ~/.kube/config  # Uncomment to specify a custom kubeconfig path
   # node_name: worker-1  # Uncomment to specify a specific node
+  cache_dir: ~/.ovn_explorer/cache  # Directory to store cached data
+  load_cache_on_startup: true  # Whether to load cached data on startup
 
 # GUI Settings
 gui:
@@ -155,19 +160,33 @@ ovn_explorer/
 │   ├── gui/              # GUI components
 │   │   └── main_window.py # Main window
 │   ├── ovn/              # OVN interaction
-│   │   └── connection.py # OVN connection handling
+│   │   ├── connection.py # OVN connection handling
+│   │   └── models.py     # OVN resource models
 │   └── visualization/    # Visualization components
 │       └── network_view.py # Network visualization
 └── tests/                # Tests
+    ├── test_ovn_connection.py # Tests for OVN connection
+    └── test_ovn_models.py     # Tests for OVN models
 ```
 
 ### Adding New Features
 
 To add support for additional OVN components:
 
-1. Update the `OVNConnection` class in `src/ovn/connection.py` to retrieve the new component data
-2. Add the new component to the component tree in `src/gui/main_window.py`
-3. Update the network visualization in `src/visualization/network_view.py` to include the new component
+1. Create a new resource class in `src/ovn/models.py` that extends `OVNResource`
+2. Update the `resource_classes` dictionary in the `OVNConnection` class in `src/ovn/connection.py`
+3. Add the new component to the component tree in `src/gui/main_window.py`
+4. Update the network visualization in `src/visualization/network_view.py` to include the new component
+
+### Data Caching
+
+The application caches OVN data in JSON format for improved performance and offline viewing:
+
+1. Raw JSON data is stored in the cache directory specified in the configuration
+2. Each resource type has its own cache file with a timestamp
+3. The latest data is also stored in a separate file for quick access
+4. Cached data is automatically loaded at startup if `load_cache_on_startup` is set to `true`
+5. The "Refresh All Data" button in the toolbar can be used to refresh all data from the OVN northbound database
 
 ## License
 

@@ -14,10 +14,18 @@ DEFAULT_CONFIG = {
         'label_selector': 'app=ovnkube-node',
         'container': 'nbdb',
         'kubeconfig': None,  # Use default kubeconfig if None
+        'cache_dir': None,   # Use default cache directory if None
+        'load_cache_on_startup': True,  # Load cached data on startup
     },
     'gui': {
         'theme': 'light',
         'window_size': [1024, 768],
+        'auto_refresh': False,  # Auto-refresh data periodically
+        'refresh_interval': 60,  # Refresh interval in seconds
+    },
+    'data': {
+        'cache_enabled': True,  # Enable data caching
+        'cache_expiry': 3600,   # Cache expiry time in seconds
     },
     'visualization': {
         'node_size': 800,
