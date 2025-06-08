@@ -7,6 +7,8 @@ ovn_connection:
   container: nbdb
   # kubeconfig: ~/.kube/config  # Uncomment to specify a custom kubeconfig path
   # node_name: worker-1  # Uncomment to specify a specific node
+  cache_dir: .cache  # Directory to store cached data
+  load_cache_on_startup: true  # Whether to load cached data on startup
 
 # GUI Settings
 gui:

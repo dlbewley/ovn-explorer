@@ -11,11 +11,11 @@ from PyQt6.QtWidgets import (
     QTextEdit, QLabel, QPushButton, QStatusBar, QToolBar,
     QFileDialog, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSlot, QSize
+from PyQt6.QtCore import Qt, pyqtSlot, QSize, QTimer
 from PyQt6.QtGui import QAction, QIcon
 
-from ovn.connection import OVNConnection
-from visualization.network_view import NetworkView
+from ..ovn.connection import OVNConnection
+from ..visualization.network_view import NetworkView
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,11 @@ class MainWindow(QMainWindow):
         self.refresh_action.setStatusTip("Refresh OVN data")
         self.refresh_action.triggered.connect(self.refresh_data)
         
+        # Refresh All Data action
+        self.refresh_all_action = QAction("Refresh All Data", self)
+        self.refresh_all_action.setStatusTip("Refresh all OVN data from the northbound database")
+        self.refresh_all_action.triggered.connect(self.refresh_all_data)
+        
         # Exit action
         self.exit_action = QAction("Exit", self)
         self.exit_action.setStatusTip("Exit the application")
@@ -130,6 +135,13 @@ class MainWindow(QMainWindow):
         main_toolbar.setIconSize(QSize(16, 16))
         self.addToolBar(main_toolbar)
         
+        # Add refresh all data button with more prominence
+        refresh_button = QPushButton("Refresh All Data")
+        refresh_button.setToolTip("Refresh all OVN data from the northbound database")
+        refresh_button.clicked.connect(self.refresh_all_data)
+        main_toolbar.addWidget(refresh_button)
+        
+        main_toolbar.addSeparator()
         main_toolbar.addAction(self.refresh_action)
     
     def _create_status_bar(self):
@@ -137,6 +149,27 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
+    
+    @pyqtSlot()
+    def refresh_all_data(self):
+        """Refresh all OVN data from the northbound database."""
+        self.status_bar.showMessage("Refreshing all OVN data from the northbound database...")
+        
+        try:
+            # Use the refresh_all_data method to get fresh data
+            self.components = self.ovn_connection.refresh_all_data()
+            
+            # Update the component tree
+            self._update_component_tree()
+            
+            # Update the network visualization
+            self.network_view.update_visualization(self.components)
+            
+            self.status_bar.showMessage("All OVN data refreshed successfully", 3000)
+        except Exception as e:
+            logger.error(f"Error refreshing all OVN data: {e}")
+            self.status_bar.showMessage(f"Error refreshing all OVN data: {e}", 5000)
+            QMessageBox.critical(self, "Error", f"Failed to refresh all OVN data: {e}")
     
     @pyqtSlot()
     def refresh_data(self):
@@ -167,31 +200,42 @@ class MainWindow(QMainWindow):
         router_item = QTreeWidgetItem(self.component_tree, ["Logical Routers"])
         switch_item = QTreeWidgetItem(self.component_tree, ["Logical Switches"])
         lb_item = QTreeWidgetItem(self.component_tree, ["Load Balancers"])
-        port_item = QTreeWidgetItem(self.component_tree, ["Ports"])
+        port_item = QTreeWidgetItem(self.component_tree, ["Logical Switch Ports"])
         
         # Add logical routers
         for router in self.components.get('logical_routers', []):
-            router_child = QTreeWidgetItem(router_item, [router.get('name', 'Unknown')])
+            router_name = router.name if hasattr(router, 'name') else router.get('name', 'Unknown')
+            router_child = QTreeWidgetItem(router_item, [router_name])
             router_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router', 'data': router})
             
             # Add router ports as children
-            for port in router.get('ports', []):
-                port_child = QTreeWidgetItem(router_child, [port.get('name', 'Unknown')])
-                port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router_port', 'data': port})
+            if hasattr(router, 'ports'):
+                for port in router.ports:
+                    port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown')
+                    port_child = QTreeWidgetItem(router_child, [port_name])
+                    port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router_port', 'data': port})
+            elif isinstance(router, dict) and 'ports' in router:
+                for port in router.get('ports', []):
+                    port_name = port.get('name', 'Unknown')
+                    port_child = QTreeWidgetItem(router_child, [port_name])
+                    port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router_port', 'data': port})
         
         # Add logical switches
         for switch in self.components.get('logical_switches', []):
-            switch_child = QTreeWidgetItem(switch_item, [switch.get('name', 'Unknown')])
+            switch_name = switch.name if hasattr(switch, 'name') else switch.get('name', 'Unknown')
+            switch_child = QTreeWidgetItem(switch_item, [switch_name])
             switch_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'switch', 'data': switch})
         
         # Add load balancers
         for lb in self.components.get('load_balancers', []):
-            lb_child = QTreeWidgetItem(lb_item, [lb.get('name', 'Unknown')])
+            lb_name = lb.name if hasattr(lb, 'name') else lb.get('name', 'Unknown')
+            lb_child = QTreeWidgetItem(lb_item, [lb_name])
             lb_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'load_balancer', 'data': lb})
         
-        # Add ports
-        for port in self.components.get('ports', []):
-            port_child = QTreeWidgetItem(port_item, [port.get('name', 'Unknown')])
+        # Add logical switch ports
+        for port in self.components.get('logical_switch_ports', []):
+            port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown')
+            port_child = QTreeWidgetItem(port_item, [port_name])
             port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'port', 'data': port})
         
         # Expand all items
@@ -227,28 +271,61 @@ class MainWindow(QMainWindow):
         component_type = item_data.get('type', 'unknown')
         component_data = item_data.get('data', {})
         
+        # Get component name
+        if hasattr(component_data, 'name'):
+            component_name = component_data.name
+        elif isinstance(component_data, dict):
+            component_name = component_data.get('name', 'Unknown')
+        else:
+            component_name = 'Unknown'
+        
         # Format the details as HTML
-        details_html = f"<h2>{component_type.replace('_', ' ').title()}: {component_data.get('name', 'Unknown')}</h2>"
+        details_html = f"<h2>{component_type.replace('_', ' ').title()}: {component_name}</h2>"
         details_html += "<table border='0' cellspacing='5' cellpadding='5'>"
         
-        for key, value in component_data.items():
-            if key != 'name':  # Name is already in the header
-                if isinstance(value, list):
-                    # Format lists
-                    list_html = "<ul>"
-                    for item in value:
-                        if isinstance(item, dict):
-                            # Format dictionaries in lists
-                            list_html += "<li>"
-                            for k, v in item.items():
-                                list_html += f"{k}: {v}<br>"
-                            list_html += "</li>"
-                        else:
-                            list_html += f"<li>{item}</li>"
-                    list_html += "</ul>"
-                    value = list_html
+        # Handle OVNResource objects
+        if hasattr(component_data, 'to_dict'):
+            data_dict = component_data.to_dict()
+        elif isinstance(component_data, dict):
+            data_dict = component_data
+        else:
+            data_dict = {'data': str(component_data)}
+        
+        for key, value in data_dict.items():
+            if key in ['name', 'type']:  # Name is already in the header, type is redundant
+                continue
                 
-                details_html += f"<tr><td><b>{key.replace('_', ' ').title()}</b></td><td>{value}</td></tr>"
+            if isinstance(value, list):
+                # Format lists
+                list_html = "<ul>"
+                for item in value:
+                    if hasattr(item, 'to_dict'):
+                        # Handle OVNResource objects in lists
+                        item_dict = item.to_dict()
+                        list_html += "<li>"
+                        for k, v in item_dict.items():
+                            if k not in ['name', 'type']:
+                                list_html += f"{k.replace('_', ' ').title()}: {v}<br>"
+                        list_html += "</li>"
+                    elif isinstance(item, dict):
+                        # Format dictionaries in lists
+                        list_html += "<li>"
+                        for k, v in item.items():
+                            list_html += f"{k.replace('_', ' ').title()}: {v}<br>"
+                        list_html += "</li>"
+                    else:
+                        list_html += f"<li>{item}</li>"
+                list_html += "</ul>"
+                value = list_html
+            elif isinstance(value, dict):
+                # Format dictionaries
+                dict_html = "<ul>"
+                for k, v in value.items():
+                    dict_html += f"<li>{k.replace('_', ' ').title()}: {v}</li>"
+                dict_html += "</ul>"
+                value = dict_html
+                
+            details_html += f"<tr><td><b>{key.replace('_', ' ').title()}</b></td><td>{value}</td></tr>"
         
         details_html += "</table>"
         

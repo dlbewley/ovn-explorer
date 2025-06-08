@@ -94,37 +94,43 @@ class NetworkView(QWidget):
         
         # Add nodes for logical routers
         for router in self.components.get('logical_routers', []):
-            router_name = router.get('name', 'Unknown Router')
+            router_name = router.name if hasattr(router, 'name') else router.get('name', 'Unknown Router')
             self.graph.add_node(router_name, type='router', data=router)
             
             # Add router ports
-            for port in router.get('ports', []):
-                port_name = port.get('name', 'Unknown Port')
-                self.graph.add_node(port_name, type='router_port', data=port)
-                self.graph.add_edge(router_name, port_name)
+            if hasattr(router, 'ports'):
+                for port in router.ports:
+                    port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
+                    self.graph.add_node(port_name, type='router_port', data=port)
+                    self.graph.add_edge(router_name, port_name)
+            elif isinstance(router, dict) and 'ports' in router:
+                for port in router.get('ports', []):
+                    port_name = port.get('name', 'Unknown Port')
+                    self.graph.add_node(port_name, type='router_port', data=port)
+                    self.graph.add_edge(router_name, port_name)
         
         # Add nodes for logical switches
         for switch in self.components.get('logical_switches', []):
-            switch_name = switch.get('name', 'Unknown Switch')
+            switch_name = switch.name if hasattr(switch, 'name') else switch.get('name', 'Unknown Switch')
             self.graph.add_node(switch_name, type='switch', data=switch)
             
             # Connect switches to ports (simplified - in a real app, you'd need to determine actual connections)
             # This is just a placeholder for demonstration
-            for port in self.components.get('ports', []):
-                port_name = port.get('name', 'Unknown Port')
+            for port in self.components.get('logical_switch_ports', []):
+                port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
                 if port_name.startswith(switch_name):
                     self.graph.add_node(port_name, type='port', data=port)
                     self.graph.add_edge(switch_name, port_name)
         
         # Add nodes for load balancers
         for lb in self.components.get('load_balancers', []):
-            lb_name = lb.get('name', 'Unknown LB')
+            lb_name = lb.name if hasattr(lb, 'name') else lb.get('name', 'Unknown LB')
             self.graph.add_node(lb_name, type='load_balancer', data=lb)
             
             # Connect load balancers to switches (simplified - in a real app, you'd need to determine actual connections)
             # This is just a placeholder for demonstration
             for switch in self.components.get('logical_switches', []):
-                switch_name = switch.get('name', 'Unknown Switch')
+                switch_name = switch.name if hasattr(switch, 'name') else switch.get('name', 'Unknown Switch')
                 if lb_name.startswith(switch_name):
                     self.graph.add_edge(lb_name, switch_name)
     
@@ -200,7 +206,14 @@ class NetworkView(QWidget):
         if self.highlighted_component:
             component_type = self.highlighted_component.get('type')
             component_data = self.highlighted_component.get('data', {})
-            component_name = component_data.get('name', 'Unknown')
+            
+            # Get component name
+            if hasattr(component_data, 'name'):
+                component_name = component_data.name
+            elif isinstance(component_data, dict):
+                component_name = component_data.get('name', 'Unknown')
+            else:
+                component_name = 'Unknown'
             
             if component_name in self.graph.nodes:
                 nx.draw_networkx_nodes(
