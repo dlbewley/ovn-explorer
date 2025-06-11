@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
         self.component_tree.setHeaderLabels(["OVN Components"])
         self.component_tree.setMinimumWidth(250)
         self.component_tree.itemClicked.connect(self._on_component_selected)
+        self.component_tree.itemChanged.connect(self._on_component_visibility_changed)
         splitter.addWidget(self.component_tree)
         
         # Right panel - Tabs for different views
@@ -194,53 +195,69 @@ class MainWindow(QMainWindow):
     
     def _update_component_tree(self):
         """Update the component tree with the latest data."""
+        self.component_tree.blockSignals(True)
         self.component_tree.clear()
+
+        type_map = {
+            "logical_routers": "router",
+            "logical_switches": "switch",
+            "load_balancers": "load_balancer",
+            "logical_switch_ports": "port",
+        }
         
-        # Create top-level items for each component type
-        router_item = QTreeWidgetItem(self.component_tree, ["Logical Routers"])
-        switch_item = QTreeWidgetItem(self.component_tree, ["Logical Switches"])
-        lb_item = QTreeWidgetItem(self.component_tree, ["Load Balancers"])
-        port_item = QTreeWidgetItem(self.component_tree, ["Logical Switch Ports"])
+        component_types = {
+            "logical_routers": "Logical Routers",
+            "logical_switches": "Logical Switches",
+            "load_balancers": "Load Balancers",
+            "logical_switch_ports": "Logical Switch Ports",
+        }
         
-        # Add logical routers
-        for router in self.components.get('logical_routers', []):
-            router_name = router.name if hasattr(router, 'name') else router.get('name', 'Unknown')
-            router_child = QTreeWidgetItem(router_item, [router_name])
-            router_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router', 'data': router})
-            
-            # Add router ports as children
-            if hasattr(router, 'ports'):
-                for port in router.ports:
-                    port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown')
-                    port_child = QTreeWidgetItem(router_child, [port_name])
-                    port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router_port', 'data': port})
-            elif isinstance(router, dict) and 'ports' in router:
-                for port in router.get('ports', []):
-                    port_name = port.get('name', 'Unknown')
-                    port_child = QTreeWidgetItem(router_child, [port_name])
-                    port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router_port', 'data': port})
-        
-        # Add logical switches
-        for switch in self.components.get('logical_switches', []):
-            switch_name = switch.name if hasattr(switch, 'name') else switch.get('name', 'Unknown')
-            switch_child = QTreeWidgetItem(switch_item, [switch_name])
-            switch_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'switch', 'data': switch})
-        
-        # Add load balancers
-        for lb in self.components.get('load_balancers', []):
-            lb_name = lb.name if hasattr(lb, 'name') else lb.get('name', 'Unknown')
-            lb_child = QTreeWidgetItem(lb_item, [lb_name])
-            lb_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'load_balancer', 'data': lb})
-        
-        # Add logical switch ports
-        for port in self.components.get('logical_switch_ports', []):
-            port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown')
-            port_child = QTreeWidgetItem(port_item, [port_name])
-            port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'port', 'data': port})
-        
+        for comp_type, name in component_types.items():
+            parent_item = QTreeWidgetItem(self.component_tree, [name])
+            parent_item.setData(0, Qt.ItemDataRole.UserRole, {'type': comp_type})
+            parent_item.setFlags(parent_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            parent_item.setCheckState(0, Qt.CheckState.Checked)
+
+            components = self.components.get(comp_type, [])
+            item_type = type_map.get(comp_type)
+
+            for component in components:
+                comp_name = component.name if hasattr(component, 'name') else component.get('name', 'Unknown')
+                child_item = QTreeWidgetItem(parent_item, [comp_name])
+                child_item.setData(0, Qt.ItemDataRole.UserRole, {'type': item_type, 'data': component})
+
+                if comp_type == "logical_routers":
+                     if hasattr(component, 'ports'):
+                        for port in component.ports:
+                            port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown')
+                            port_child = QTreeWidgetItem(child_item, [port_name])
+                            port_child.setData(0, Qt.ItemDataRole.UserRole, {'type': 'router_port', 'data': port})
+
         # Expand all items
         self.component_tree.expandAll()
-    
+        self.component_tree.blockSignals(False)
+
+    @pyqtSlot(QTreeWidgetItem, int)
+    def _on_component_visibility_changed(self, item: QTreeWidgetItem, column: int):
+        """Handle component visibility change from checkbox."""
+        self._update_network_visualization()
+
+    def _get_visible_components(self) -> Dict[str, Any]:
+        """Get the components that are currently checked as visible."""
+        visible_components = {}
+        for i in range(self.component_tree.topLevelItemCount()):
+            parent_item = self.component_tree.topLevelItem(i)
+            if parent_item.checkState(0) == Qt.CheckState.Checked:
+                comp_type = parent_item.data(0, Qt.ItemDataRole.UserRole).get('type')
+                if comp_type:
+                    visible_components[comp_type] = self.components.get(comp_type, [])
+        return visible_components
+
+    def _update_network_visualization(self):
+        """Update the network view with visible components."""
+        visible_components = self._get_visible_components()
+        self.network_view.update_visualization(visible_components)
+
     @pyqtSlot(QTreeWidgetItem, int)
     def _on_component_selected(self, item: QTreeWidgetItem, column: int):
         """
@@ -250,7 +267,16 @@ class MainWindow(QMainWindow):
             item: Selected tree item
             column: Selected column
         """
-        # Get the item data
+        # Don't do anything if a category item is clicked
+        parent_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if parent_data and parent_data.get('type') in ["logical_routers", "logical_switches", "load_balancers", "logical_switch_ports"]:
+            return
+        
+        # Also ignore routers that are parents in the tree
+        if item.childCount() > 0:
+            return
+
+        # Get component data from the item
         item_data = item.data(0, Qt.ItemDataRole.UserRole)
         if not item_data:
             return
