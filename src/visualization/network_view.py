@@ -92,10 +92,16 @@ class NetworkView(QWidget):
         # Create a new graph
         self.graph = nx.Graph()
         
+        # Dictionary to store port information for later connection analysis
+        switch_ports = {}  # key: switch name, value: list of ports
+        router_ports = {}  # key: router name, value: list of ports
+        all_ports = {}     # key: port name, value: port data
+        
         # Add nodes for logical routers
         for router in self.components.get('logical_routers', []):
             router_name = router.name if hasattr(router, 'name') else router.get('name', 'Unknown Router')
             self.graph.add_node(router_name, type='router', data=router)
+            router_ports[router_name] = []
             
             # Add router ports
             if hasattr(router, 'ports'):
@@ -103,24 +109,70 @@ class NetworkView(QWidget):
                     port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
                     self.graph.add_node(port_name, type='router_port', data=port)
                     self.graph.add_edge(router_name, port_name)
+                    router_ports[router_name].append(port)
+                    all_ports[port_name] = port
             elif isinstance(router, dict) and 'ports' in router:
                 for port in router.get('ports', []):
                     port_name = port.get('name', 'Unknown Port')
                     self.graph.add_node(port_name, type='router_port', data=port)
                     self.graph.add_edge(router_name, port_name)
+                    router_ports[router_name].append(port)
+                    all_ports[port_name] = port
+        
+        # Add standalone logical router ports (if any)
+        for port in self.components.get('logical_router_ports', []):
+            port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
+            # Only add if not already added through a router
+            if port_name not in self.graph.nodes:
+                self.graph.add_node(port_name, type='router_port', data=port)
+                all_ports[port_name] = port
+                
+                # If the port has a router reference, connect it
+                router_ref = port.router if hasattr(port, 'router') else port.get('router', '')
+                if router_ref:
+                    # Find the router by UUID or name
+                    for router in self.components.get('logical_routers', []):
+                        router_uuid = router.uuid if hasattr(router, 'uuid') else router.get('uuid', '')
+                        router_name = router.name if hasattr(router, 'name') else router.get('name', '')
+                        if router_uuid == router_ref or router_name == router_ref:
+                            router_name = router.name if hasattr(router, 'name') else router.get('name', 'Unknown Router')
+                            self.graph.add_edge(router_name, port_name)
+                            if router_name not in router_ports:
+                                router_ports[router_name] = []
+                            router_ports[router_name].append(port)
+                            break
         
         # Add nodes for logical switches
         for switch in self.components.get('logical_switches', []):
             switch_name = switch.name if hasattr(switch, 'name') else switch.get('name', 'Unknown Switch')
             self.graph.add_node(switch_name, type='switch', data=switch)
+            switch_ports[switch_name] = []
             
-            # Connect switches to ports (simplified - in a real app, you'd need to determine actual connections)
-            # This is just a placeholder for demonstration
+            # Get switch ports from the switch's ports attribute if available
+            switch_port_refs = []
+            if hasattr(switch, 'ports'):
+                switch_port_refs = switch.ports
+            elif isinstance(switch, dict) and 'ports' in switch:
+                switch_port_refs = switch.get('ports', [])
+            
+            # Connect switch to its ports
             for port in self.components.get('logical_switch_ports', []):
                 port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
-                if port_name.startswith(switch_name):
+                port_uuid = port.uuid if hasattr(port, 'uuid') else port.get('uuid', '')
+                
+                # Check if this port belongs to the switch
+                port_switch = port.switch if hasattr(port, 'switch') else port.get('switch', '')
+                
+                # Add the port if it belongs to this switch or has a matching name prefix
+                if (port_uuid in switch_port_refs or 
+                    port_switch == switch_name or 
+                    port_switch == switch.uuid if hasattr(switch, 'uuid') else switch.get('uuid', '') or
+                    port_name.startswith(switch_name)):
+                    
                     self.graph.add_node(port_name, type='port', data=port)
                     self.graph.add_edge(switch_name, port_name)
+                    switch_ports[switch_name].append(port)
+                    all_ports[port_name] = port
         
         # Add nodes for load balancers
         for lb in self.components.get('load_balancers', []):
@@ -128,11 +180,210 @@ class NetworkView(QWidget):
             self.graph.add_node(lb_name, type='load_balancer', data=lb)
             
             # Connect load balancers to switches (simplified - in a real app, you'd need to determine actual connections)
-            # This is just a placeholder for demonstration
             for switch in self.components.get('logical_switches', []):
                 switch_name = switch.name if hasattr(switch, 'name') else switch.get('name', 'Unknown Switch')
                 if lb_name.startswith(switch_name):
                     self.graph.add_edge(lb_name, switch_name)
+        
+        # Add nodes for port groups
+        for pg in self.components.get('port_groups', []):
+            pg_name = pg.name if hasattr(pg, 'name') else pg.get('name', 'Unknown Port Group')
+            self.graph.add_node(pg_name, type='port_group', data=pg)
+            
+            # Connect port groups to their ports
+            ports = pg.ports if hasattr(pg, 'ports') else pg.get('ports', [])
+            for port_ref in ports:
+                # Find the port in logical switch ports
+                for port in self.components.get('logical_switch_ports', []):
+                    port_uuid = port.uuid if hasattr(port, 'uuid') else port.get('uuid', '')
+                    if port_uuid == port_ref:
+                        port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
+                        self.graph.add_edge(pg_name, port_name)
+        
+        # Add nodes for chassis
+        for chassis in self.components.get('chassis', []):
+            chassis_name = chassis.name if hasattr(chassis, 'name') else chassis.get('name', 'Unknown Chassis')
+            hostname = chassis.hostname if hasattr(chassis, 'hostname') else chassis.get('hostname', '')
+            if hostname:
+                chassis_name = hostname  # Use hostname for better readability
+            self.graph.add_node(chassis_name, type='chassis', data=chassis)
+        
+        # Add nodes for meters
+        for meter in self.components.get('meters', []):
+            meter_name = meter.name if hasattr(meter, 'name') else meter.get('name', 'Unknown Meter')
+            self.graph.add_node(meter_name, type='meter', data=meter)
+        
+        # Add nodes for multicast groups
+        for group in self.components.get('multicast_groups', []):
+            group_name = group.name if hasattr(group, 'name') else group.get('name', 'Unknown Group')
+            address = group.address if hasattr(group, 'address') else group.get('address', '')
+            if address:
+                group_name = f"{group_name} ({address})"
+            self.graph.add_node(group_name, type='multicast_group', data=group)
+            
+            # Connect multicast groups to their ports
+            ports = group.ports if hasattr(group, 'ports') else group.get('ports', [])
+            for port_ref in ports:
+                # Find the port in logical switch ports
+                for port in self.components.get('logical_switch_ports', []):
+                    port_uuid = port.uuid if hasattr(port, 'uuid') else port.get('uuid', '')
+                    if port_uuid == port_ref:
+                        port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
+                        self.graph.add_edge(group_name, port_name)
+        
+        # Add nodes for gateways
+        for gateway in self.components.get('gateways', []):
+            gateway_name = gateway.name if hasattr(gateway, 'name') else gateway.get('name', 'Unknown Gateway')
+            self.graph.add_node(gateway_name, type='gateway', data=gateway)
+            
+            # Connect gateways to their router ports
+            router_port = gateway.router_port if hasattr(gateway, 'router_port') else gateway.get('router_port', '')
+            if router_port:
+                # Find the port in logical router ports
+                for port in self.components.get('logical_router_ports', []):
+                    port_name = port.name if hasattr(port, 'name') else port.get('name', 'Unknown Port')
+                    port_uuid = port.uuid if hasattr(port, 'uuid') else port.get('uuid', '')
+                    if port_uuid == router_port or port_name == router_port:
+                        self.graph.add_edge(gateway_name, port_name)
+                        break
+            
+            # Connect gateways to their chassis
+            chassis_name = gateway.chassis_name if hasattr(gateway, 'chassis_name') else gateway.get('chassis_name', '')
+            if chassis_name:
+                # Find the chassis
+                for chassis in self.components.get('chassis', []):
+                    chassis_uuid = chassis.uuid if hasattr(chassis, 'uuid') else chassis.get('uuid', '')
+                    chassis_hostname = chassis.hostname if hasattr(chassis, 'hostname') else chassis.get('hostname', '')
+                    if chassis_uuid == chassis_name or chassis_hostname == chassis_name:
+                        chassis_display_name = chassis_hostname if chassis_hostname else chassis.name
+                        self.graph.add_edge(gateway_name, chassis_display_name)
+                        break
+        
+        # Analyze logical switch ports and logical router ports to draw edges between them
+        self._connect_ports(all_ports)
+    
+    def _connect_ports(self, all_ports):
+        """
+        Analyze ports and create connections between them.
+        
+        Args:
+            all_ports: Dictionary of all ports (key: port name, value: port data)
+        """
+        # Create a mapping of MAC addresses to ports
+        mac_to_port = {}
+        for port_name, port in all_ports.items():
+            # Get MAC address
+            mac = None
+            if hasattr(port, 'mac'):
+                mac = port.mac
+            elif isinstance(port, dict):
+                mac = port.get('mac', None)
+            
+            if mac:
+                if isinstance(mac, list):
+                    for m in mac:
+                        mac_to_port[m] = port_name
+                else:
+                    mac_to_port[mac] = port_name
+        
+        # Create a mapping of IP addresses/networks to ports
+        ip_to_port = {}
+        for port_name, port in all_ports.items():
+            # Get IP address/network
+            network = None
+            if hasattr(port, 'network'):
+                network = port.network
+            elif isinstance(port, dict):
+                network = port.get('network', None)
+            
+            if network:
+                if isinstance(network, list):
+                    for n in network:
+                        ip_to_port[n] = port_name
+                else:
+                    ip_to_port[network] = port_name
+            
+            # Also check addresses field for logical switch ports
+            addresses = None
+            if hasattr(port, 'addresses'):
+                addresses = port.addresses
+            elif isinstance(port, dict):
+                addresses = port.get('addresses', None)
+            
+            if addresses:
+                if isinstance(addresses, list):
+                    for addr in addresses:
+                        # Addresses might be in format "MAC IP1 IP2..."
+                        parts = addr.split()
+                        if len(parts) > 1:  # Has both MAC and IP
+                            for ip_part in parts[1:]:
+                                ip_to_port[ip_part] = port_name
+                else:
+                    parts = addresses.split()
+                    if len(parts) > 1:  # Has both MAC and IP
+                        for ip_part in parts[1:]:
+                            ip_to_port[ip_part] = port_name
+        
+        # Connect ports based on matching MAC addresses
+        for port_name, port in all_ports.items():
+            # For router ports, check if they have a peer MAC that matches another port
+            peer_mac = None
+            if hasattr(port, 'peer_mac'):
+                peer_mac = port.peer_mac
+            elif isinstance(port, dict):
+                peer_mac = port.get('peer_mac', None)
+            
+            if peer_mac and peer_mac in mac_to_port:
+                peer_port = mac_to_port[peer_mac]
+                if peer_port != port_name:  # Don't connect to self
+                    self.graph.add_edge(port_name, peer_port, type='peer')
+            
+            # For logical switch ports, check if they have a router port MAC
+            if hasattr(port, 'type') and port.type == 'router':
+                port_mac = None
+                if hasattr(port, 'mac'):
+                    port_mac = port.mac
+                elif isinstance(port, dict):
+                    port_mac = port.get('mac', None)
+                
+                if port_mac and port_mac in mac_to_port:
+                    router_port = mac_to_port[port_mac]
+                    if router_port != port_name:  # Don't connect to self
+                        self.graph.add_edge(port_name, router_port, type='router_connection')
+        
+        # Connect ports based on IP networks
+        # This is a simplified approach - in a real implementation, you'd need to check
+        # if IP addresses are in the same subnet
+        for port_name, port in all_ports.items():
+            network = None
+            if hasattr(port, 'network'):
+                network = port.network
+            elif isinstance(port, dict):
+                network = port.get('network', None)
+            
+            if network:
+                # Extract network prefix (e.g., "192.168.1" from "192.168.1.1/24")
+                network_prefix = None
+                if '/' in network:
+                    ip_part = network.split('/')[0]
+                    parts = ip_part.split('.')
+                    if len(parts) >= 3:  # IPv4
+                        network_prefix = '.'.join(parts[:3])
+                
+                if network_prefix:
+                    # Find other ports in the same network
+                    for other_port, other_data in all_ports.items():
+                        if other_port == port_name:
+                            continue  # Skip self
+                        
+                        other_network = None
+                        if hasattr(other_data, 'network'):
+                            other_network = other_data.network
+                        elif isinstance(other_data, dict):
+                            other_network = other_data.get('network', None)
+                        
+                        if other_network and network_prefix in other_network:
+                            self.graph.add_edge(port_name, other_port, type='network')
     
     def _draw_graph(self):
         """Draw the NetworkX graph."""
@@ -172,8 +423,22 @@ class NetworkView(QWidget):
                 node_colors.append('blue')
             elif node_type == 'load_balancer':
                 node_colors.append('green')
-            elif node_type == 'port' or node_type == 'router_port':
+            elif node_type == 'port':
                 node_colors.append('orange')
+            elif node_type == 'router_port':
+                node_colors.append('darkorange')
+            elif node_type == 'port_group':
+                node_colors.append('purple')
+            elif node_type == 'chassis':
+                node_colors.append('brown')
+            elif node_type == 'meter':
+                node_colors.append('cyan')
+            elif node_type == 'multicast_group':
+                node_colors.append('magenta')
+            elif node_type == 'gateway':
+                node_colors.append('darkgreen')
+            elif node_type == 'connection':
+                node_colors.append('darkblue')
             else:
                 node_colors.append('gray')
         

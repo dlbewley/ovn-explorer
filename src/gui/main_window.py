@@ -203,6 +203,13 @@ class MainWindow(QMainWindow):
             "logical_switches": "switch",
             "load_balancers": "load_balancer",
             "logical_switch_ports": "port",
+            "logical_router_ports": "router_port",
+            "port_groups": "port_group",
+            "chassis": "chassis",
+            "meters": "meter",
+            "multicast_groups": "multicast_group",
+            "gateways": "gateway",
+            "connections": "connection",
         }
         
         component_types = {
@@ -210,6 +217,13 @@ class MainWindow(QMainWindow):
             "logical_switches": "Logical Switches",
             "load_balancers": "Load Balancers",
             "logical_switch_ports": "Logical Switch Ports",
+            "logical_router_ports": "Logical Router Ports",
+            "port_groups": "Port Groups",
+            "chassis": "Chassis",
+            "meters": "Meters",
+            "multicast_groups": "Multicast Groups",
+            "gateways": "Gateways",
+            "connections": "Connections",
         }
         
         for comp_type, name in component_types.items():
@@ -269,7 +283,11 @@ class MainWindow(QMainWindow):
         """
         # Don't do anything if a category item is clicked
         parent_data = item.data(0, Qt.ItemDataRole.UserRole)
-        if parent_data and parent_data.get('type') in ["logical_routers", "logical_switches", "load_balancers", "logical_switch_ports"]:
+        if parent_data and parent_data.get('type') in [
+            "logical_routers", "logical_switches", "load_balancers", 
+            "logical_switch_ports", "logical_router_ports", "port_groups",
+            "chassis", "meters", "multicast_groups", "gateways", "connections"
+        ]:
             return
         
         # Also ignore routers that are parents in the tree
