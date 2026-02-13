@@ -527,6 +527,91 @@ class NAT(OVNResource):
         self.logical_port = data.get('logical_port', '')
 
 
+class PortGroup(OVNResource):
+    """Port Group resource."""
+    
+    resource_type = "port_group"
+    list_command = ["list", "Port_Group"]
+    
+    def __init__(self, data: Dict[str, Any]):
+        """Initialize a port group."""
+        super().__init__(data)
+        self.ports = data.get('ports', [])
+        self.acls = data.get('acls', [])
+
+
+class Chassis(OVNResource):
+    """Chassis resource."""
+    
+    resource_type = "chassis"
+    list_command = ["list", "Chassis"]
+    command_prefix = "ovn-sbctl"  # Uses southbound database
+    
+    def __init__(self, data: Dict[str, Any]):
+        """Initialize a chassis."""
+        super().__init__(data)
+        self.hostname = data.get('hostname', '')
+        self.encaps = data.get('encaps', [])
+        self.vtep_logical_switches = data.get('vtep_logical_switches', [])
+
+
+class Meter(OVNResource):
+    """Meter resource."""
+    
+    resource_type = "meter"
+    list_command = ["list", "Meter"]
+    
+    def __init__(self, data: Dict[str, Any]):
+        """Initialize a meter."""
+        super().__init__(data)
+        self.bands = data.get('bands', [])
+        self.fair = data.get('fair', False)
+        self.unit = data.get('unit', '')
+
+
+class MulticastGroup(OVNResource):
+    """Multicast Group resource."""
+    
+    resource_type = "multicast_group"
+    list_command = ["list", "Multicast_Group"]
+    
+    def __init__(self, data: Dict[str, Any]):
+        """Initialize a multicast group."""
+        super().__init__(data)
+        self.datapath = data.get('datapath', '')
+        self.address = data.get('address', '')
+        self.ports = data.get('ports', [])
+
+
+class Gateway(OVNResource):
+    """Gateway resource."""
+    
+    resource_type = "gateway"
+    list_command = ["list", "Gateway_Chassis"]
+    
+    def __init__(self, data: Dict[str, Any]):
+        """Initialize a gateway."""
+        super().__init__(data)
+        self.chassis_name = data.get('chassis_name', '')
+        self.priority = data.get('priority', 0)
+        self.router_port = data.get('router_port', '')
+
+
+class Connection(OVNResource):
+    """Connection resource."""
+    
+    resource_type = "connection"
+    list_command = ["list", "Connection"]
+    
+    def __init__(self, data: Dict[str, Any]):
+        """Initialize a connection."""
+        super().__init__(data)
+        self.target = data.get('target', '')
+        self.inactivity_probe = data.get('inactivity_probe', 0)
+        self.max_backoff = data.get('max_backoff', 0)
+        self.status = data.get('status', {})
+
+
 class OVNCache:
     """Cache for OVN resources."""
     
@@ -554,7 +639,13 @@ class OVNCache:
             'address_set': AddressSet,
             'dhcp_options': DHCPOptions,
             'qos': QoS,
-            'nat': NAT
+            'nat': NAT,
+            'port_group': PortGroup,
+            'chassis': Chassis,
+            'meter': Meter,
+            'multicast_group': MulticastGroup,
+            'gateway': Gateway,
+            'connection': Connection
         }
         
         # Cache of resources by type

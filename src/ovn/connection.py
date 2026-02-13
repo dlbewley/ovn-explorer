@@ -13,7 +13,8 @@ from kubernetes.stream import stream
 from .models import (
     OVNResource, OVNCache, LogicalSwitch, LogicalRouter, 
     LogicalRouterPort, LogicalSwitchPort, LoadBalancer,
-    ACL, AddressSet, DHCPOptions, QoS, NAT
+    ACL, AddressSet, DHCPOptions, QoS, NAT,
+    PortGroup, Chassis, Meter, MulticastGroup, Gateway, Connection
 )
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,13 @@ class OVNConnection:
             'address_set': AddressSet,
             'dhcp_options': DHCPOptions,
             'qos': QoS,
-            'nat': NAT
+            'nat': NAT,
+            'port_group': PortGroup,
+            'chassis': Chassis,
+            'meter': Meter,
+            'multicast_group': MulticastGroup,
+            'gateway': Gateway,
+            'connection': Connection
         }
         
         # Initialize Kubernetes client
@@ -322,6 +329,13 @@ class OVNConnection:
             'logical_switches': self.get_logical_switches(),
             'load_balancers': self.get_load_balancers(),
             'logical_switch_ports': self.get_logical_switch_ports(),
+            'logical_router_ports': self.get_resources(LogicalRouterPort),
+            'port_groups': self.get_resources(PortGroup),
+            'chassis': self.get_resources(Chassis),
+            'meters': self.get_resources(Meter),
+            'multicast_groups': self.get_resources(MulticastGroup),
+            'gateways': self.get_resources(Gateway),
+            'connections': self.get_resources(Connection),
         }
     
     def refresh_all_data(self) -> Dict[str, List[OVNResource]]:
@@ -351,4 +365,17 @@ class OVNConnection:
                 logger.error(f"Error refreshing {resource_type} data: {e}")
                 components[resource_type] = []
         
-        return components
+        # Convert to the format expected by the UI
+        return {
+            'logical_routers': components.get('logical_router', []),
+            'logical_switches': components.get('logical_switch', []),
+            'load_balancers': components.get('load_balancer', []),
+            'logical_switch_ports': components.get('logical_switch_port', []),
+            'logical_router_ports': components.get('logical_router_port', []),
+            'port_groups': components.get('port_group', []),
+            'chassis': components.get('chassis', []),
+            'meters': components.get('meter', []),
+            'multicast_groups': components.get('multicast_group', []),
+            'gateways': components.get('gateway', []),
+            'connections': components.get('connection', []),
+        }
